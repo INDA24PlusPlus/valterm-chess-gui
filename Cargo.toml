@@ -1,0 +1,8 @@
+[package]
+name = "valterm-chess-gui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ggez = "0.9.3"
+chess_lib = {git = "https://github.com/INDA24PlusPlus/avj-chess.git"}
