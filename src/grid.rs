@@ -1,9 +1,25 @@
-use crate::{BLACK_COLOR, TILE_SIZE, WHITE_COLOR};
+use crate::{BLACK_COLOR, GRID_X, GRID_Y, TILE_SIZE, WHITE_COLOR};
+use ggez::glam::Vec2;
 use ggez::graphics::Rect;
 use ggez::{graphics, Context, GameResult};
 
 pub struct Grid {
     pub mesh: graphics::Mesh,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub struct GridPosition {
+    pub x: usize,
+    pub y: usize,
+}
+
+impl Into<GridPosition> for (usize, usize) {
+    fn into(self) -> GridPosition {
+        GridPosition {
+            x: self.0,
+            y: self.1,
+        }
+    }
 }
 
 impl Grid {
@@ -43,5 +59,19 @@ impl Grid {
         Ok(Grid {
             mesh: graphics::Mesh::from_data(ctx, mb.build()),
         })
+    }
+
+    pub fn screen2grid(&self, x: f32, y: f32) -> Option<GridPosition> {
+        if x - GRID_X < 0.0 || x + GRID_X > TILE_SIZE * 8.0 {
+            return None;
+        }
+        if y - GRID_Y < 0.0 || y + GRID_Y > TILE_SIZE * 8.0 {
+            return None;
+        }
+
+        let grid_x = ((x - GRID_X) / (TILE_SIZE)) as usize;
+        let grid_y = ((y - GRID_Y) / (TILE_SIZE)) as usize;
+
+        Some((grid_x, grid_y).into())
     }
 }

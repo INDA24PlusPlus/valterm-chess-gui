@@ -1,11 +1,11 @@
-use chess_lib::board::pieces::{Color, PieceType};
+use chess_lib::board::pieces::{get_legal_moves, move_piece, Color, Move, Piece, PieceType};
 use chess_lib::game::Game;
 use ggez::conf::{WindowMode, WindowSetup};
-use ggez::event::{self, EventHandler};
+use ggez::event::{self, EventHandler, MouseButton};
 use ggez::glam::{vec2, Vec2};
 use ggez::graphics::{self, Canvas, DrawParam, Rect};
 use ggez::{Context, ContextBuilder, GameResult};
-use grid::Grid;
+use grid::{Grid, GridPosition};
 
 pub mod grid;
 
@@ -78,10 +78,48 @@ impl PieceImages {
     }
 }
 
+struct Drawables {
+    selected_frame: graphics::Mesh,
+    possible_move_dot: graphics::Mesh,
+}
+
+impl Drawables {
+    pub fn new(ctx: &mut Context) -> GameResult<Drawables> {
+        let mb = &mut graphics::MeshBuilder::new();
+        mb.rectangle(
+            graphics::DrawMode::stroke(5.0),
+            Rect::new(0.0, 0.0, TILE_SIZE, TILE_SIZE),
+            graphics::Color::RED,
+        )?;
+        let frame = graphics::Mesh::from_data(ctx, mb.build());
+        let mb = &mut graphics::MeshBuilder::new();
+        mb.circle(
+            graphics::DrawMode::fill(),
+            vec2(TILE_SIZE / 2.0, TILE_SIZE / 2.0),
+            TILE_SIZE / 8.0,
+            0.1,
+            graphics::Color::RED,
+        )?;
+        let dot = graphics::Mesh::from_data(ctx, mb.build());
+        Ok(Drawables {
+            selected_frame: frame,
+            possible_move_dot: dot,
+        })
+    }
+}
+
+struct Selected {
+    piece: Piece,
+    position: GridPosition,
+    moves: Vec<Move>,
+}
+
 pub struct Chess {
     game: Game,
     grid: Grid,
     piece_images: PieceImages,
+    selected_piece: Option<Selected>,
+    drawables: Drawables,
 }
 
 impl Chess {
@@ -91,22 +129,21 @@ impl Chess {
             game: Game::new(Some("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR".into())),
             grid: Grid::new(ctx)?,
             piece_images: PieceImages::new(ctx)?,
+            selected_piece: None,
+            drawables: Drawables::new(ctx)?,
         })
     }
 }
 
-pub fn board2grid(x: u32, y: u32) -> Vec2 {
-    vec2(
-        GRID_X + x as f32 * TILE_SIZE + TILE_SIZE * 0.5,
-        GRID_Y + y as f32 * TILE_SIZE + TILE_SIZE * 0.5,
-    )
+pub fn board2grid(x: usize, y: usize) -> Vec2 {
+    vec2(GRID_X + x as f32 * TILE_SIZE, GRID_Y + y as f32 * TILE_SIZE)
 }
 
 pub fn draw_piece(
     chess: &mut Chess,
     canvas: &mut Canvas,
-    x: u32,
-    y: u32,
+    x: usize,
+    y: usize,
     piece_type: PieceType,
     color: Color,
 ) {
@@ -164,7 +201,7 @@ pub fn draw_piece(
     canvas.draw(
         image,
         DrawParam::new()
-            .dest(position)
+            .dest(position + TILE_SIZE * 0.5)
             .scale(scale * 0.8)
             .offset(vec2(0.5, 0.5)),
     );
@@ -187,18 +224,83 @@ impl EventHandler for Chess {
                 if piece.color == Color::EMPTY {
                     continue;
                 }
-                draw_piece(
-                    self,
-                    &mut canvas,
-                    x as u32,
-                    y as u32,
-                    piece.piece_type,
-                    piece.color,
-                );
+                draw_piece(self, &mut canvas, x, y, piece.piece_type, piece.color);
+            }
+        }
+
+        if let Some(selected) = &self.selected_piece {
+            let pos = board2grid(selected.position.x, selected.position.y);
+            canvas.draw(&self.drawables.selected_frame, pos);
+
+            for grid_pos in &selected.moves {
+                let pos = board2grid(grid_pos.0 as usize, grid_pos.1 as usize);
+                canvas.draw(&self.drawables.possible_move_dot, pos);
             }
         }
 
         // Draw code here...
         canvas.finish(ctx)
+    }
+
+    fn mouse_button_down_event(
+        &mut self,
+        _ctx: &mut Context,
+        button: event::MouseButton,
+        x: f32,
+        y: f32,
+    ) -> Result<(), ggez::GameError> {
+        if button != MouseButton::Left {
+            return Ok(());
+        }
+        let position = match self.grid.screen2grid(x, y) {
+            Some(t) => t,
+            None => return Ok(()),
+        };
+
+        if let Some(selected) = &self.selected_piece {
+            // Piece already selected, maybe move? :)
+            if selected
+                .moves
+                .contains(&Move(position.x as i32, position.y as i32))
+            {
+                move_piece(
+                    Move(position.x as i32, position.y as i32),
+                    selected.position.x as i32,
+                    selected.position.y as i32,
+                    &mut self.game,
+                )
+                .unwrap();
+                self.selected_piece = None;
+            }
+        }
+
+        let piece = self.game.board.pieces[position.y][position.x];
+        if piece.piece_type != PieceType::EMPTY && piece.color == self.game.turn {
+            let moves = get_legal_moves(
+                self.game.board,
+                position.x as i32,
+                position.y as i32,
+                piece.color,
+            );
+            self.selected_piece = Some(Selected {
+                piece,
+                position,
+                moves,
+            });
+        } else {
+            self.selected_piece = None;
+        }
+        Ok(())
+    }
+
+    fn mouse_button_up_event(
+        &mut self,
+        _ctx: &mut Context,
+        _button: event::MouseButton,
+        _x: f32,
+        _y: f32,
+    ) -> Result<(), ggez::GameError> {
+        //self.selected_piece = None;
+        Ok(())
     }
 }
