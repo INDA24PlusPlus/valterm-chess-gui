@@ -1,21 +1,27 @@
-use chess_lib::board::pieces::{get_legal_moves, move_piece, Color, Move, Piece, PieceType};
+use chess_lib::board::pieces::{get_legal_moves, move_piece, Color, Move, PieceType};
 use chess_lib::game::Game;
 use ggez::conf::{WindowMode, WindowSetup};
 use ggez::event::{self, EventHandler, MouseButton};
 use ggez::glam::{vec2, Vec2};
-use ggez::graphics::{self, Canvas, DrawParam, Rect};
+use ggez::graphics::{self, Canvas, DrawParam, Rect, TextLayout};
 use ggez::{Context, ContextBuilder, GameResult};
 use grid::{Grid, GridPosition};
 
 pub mod grid;
 
-const TILE_SIZE: f32 = 75.0;
+const TILE_SIZE: f32 = 100.0;
 const BLACK_COLOR: graphics::Color = graphics::Color::BLACK;
 const WHITE_COLOR: graphics::Color = graphics::Color::WHITE;
+const PINK_COLOR: graphics::Color = graphics::Color {
+    r: 205.0 / 255.0,
+    g: 50.0 / 255.0,
+    b: 235.0 / 255.0,
+    a: 1.0,
+};
 
 // Start x, y of grid
-const GRID_X: f32 = 0.0;
-const GRID_Y: f32 = 0.0;
+const GRID_X: f32 = 100.0;
+const GRID_Y: f32 = 100.0;
 
 fn main() -> GameResult {
     // Make a Context.
@@ -81,6 +87,10 @@ impl PieceImages {
 struct Drawables {
     selected_frame: graphics::Mesh,
     possible_move_dot: graphics::Mesh,
+    white_turn: graphics::Text,
+    black_turn: graphics::Text,
+    white_checkmated: graphics::Text,
+    black_checkmated: graphics::Text,
 }
 
 impl Drawables {
@@ -89,7 +99,7 @@ impl Drawables {
         mb.rectangle(
             graphics::DrawMode::stroke(5.0),
             Rect::new(0.0, 0.0, TILE_SIZE, TILE_SIZE),
-            graphics::Color::RED,
+            PINK_COLOR,
         )?;
         let frame = graphics::Mesh::from_data(ctx, mb.build());
         let mb = &mut graphics::MeshBuilder::new();
@@ -98,18 +108,37 @@ impl Drawables {
             vec2(TILE_SIZE / 2.0, TILE_SIZE / 2.0),
             TILE_SIZE / 8.0,
             0.1,
-            graphics::Color::RED,
+            PINK_COLOR,
         )?;
         let dot = graphics::Mesh::from_data(ctx, mb.build());
+        let white_turn = graphics::Text::new("White's turn!")
+            .set_layout(TextLayout::center())
+            .set_scale(28.0)
+            .clone();
+        let black_turn = graphics::Text::new("Black's turn!")
+            .set_layout(TextLayout::center())
+            .set_scale(28.0)
+            .clone();
+        let white_checkmated = graphics::Text::new("White is checkmated, black wins!")
+            .set_layout(TextLayout::center())
+            .set_scale(28.0)
+            .clone();
+        let black_checkmated = graphics::Text::new("Black is checkmated, white wins!")
+            .set_layout(TextLayout::center())
+            .set_scale(28.0)
+            .clone();
         Ok(Drawables {
             selected_frame: frame,
             possible_move_dot: dot,
+            white_turn,
+            black_turn,
+            white_checkmated,
+            black_checkmated,
         })
     }
 }
 
 struct Selected {
-    piece: Piece,
     position: GridPosition,
     moves: Vec<Move>,
 }
@@ -238,6 +267,23 @@ impl EventHandler for Chess {
             }
         }
 
+        let text = match (
+            self.game.turn,
+            self.game.check_mate_white,
+            self.game.check_mate_black,
+        ) {
+            (_, true, false) => &self.drawables.white_checkmated,
+            (_, false, true) => &self.drawables.black_checkmated,
+            (Color::WHITE, _, _) => &self.drawables.white_turn,
+            (Color::BLACK, _, _) => &self.drawables.black_turn,
+            _ => panic!("Bruh???"),
+        };
+
+        canvas.draw(
+            text,
+            vec2((GRID_X * 2.0 + TILE_SIZE * 8.0) / 2.0, GRID_Y / 2.0),
+        );
+
         // Draw code here...
         canvas.finish(ctx)
     }
@@ -282,11 +328,7 @@ impl EventHandler for Chess {
                 position.y as i32,
                 piece.color,
             );
-            self.selected_piece = Some(Selected {
-                piece,
-                position,
-                moves,
-            });
+            self.selected_piece = Some(Selected { position, moves });
         } else {
             self.selected_piece = None;
         }

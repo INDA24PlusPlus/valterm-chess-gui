@@ -1,5 +1,4 @@
 use crate::{BLACK_COLOR, GRID_X, GRID_Y, TILE_SIZE, WHITE_COLOR};
-use ggez::glam::Vec2;
 use ggez::graphics::Rect;
 use ggez::{graphics, Context, GameResult};
 
@@ -13,12 +12,9 @@ pub struct GridPosition {
     pub y: usize,
 }
 
-impl Into<GridPosition> for (usize, usize) {
-    fn into(self) -> GridPosition {
-        GridPosition {
-            x: self.0,
-            y: self.1,
-        }
+impl From<(usize, usize)> for GridPosition {
+    fn from(val: (usize, usize)) -> Self {
+        GridPosition { x: val.0, y: val.1 }
     }
 }
 
@@ -62,10 +58,10 @@ impl Grid {
     }
 
     pub fn screen2grid(&self, x: f32, y: f32) -> Option<GridPosition> {
-        if x - GRID_X < 0.0 || x + GRID_X > TILE_SIZE * 8.0 {
+        if x - GRID_X < 0.0 || x - GRID_X > TILE_SIZE * 8.0 {
             return None;
         }
-        if y - GRID_Y < 0.0 || y + GRID_Y > TILE_SIZE * 8.0 {
+        if y - GRID_Y < 0.0 || y - GRID_Y > TILE_SIZE * 8.0 {
             return None;
         }
 
