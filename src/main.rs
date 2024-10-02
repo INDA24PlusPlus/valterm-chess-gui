@@ -1,13 +1,18 @@
+use std::env;
+
 use chess_lib::board::pieces::{get_legal_moves, move_piece, Color, Move, PieceType};
 use chess_lib::game::Game;
+use chess_networking::Start;
 use ggez::conf::{WindowMode, WindowSetup};
 use ggez::event::{self, EventHandler, MouseButton};
 use ggez::glam::{vec2, Vec2};
 use ggez::graphics::{self, Canvas, DrawParam, Rect, TextLayout};
 use ggez::{Context, ContextBuilder, GameResult};
 use grid::{Grid, GridPosition};
+use networking::{Connection, MultiplayerStatus};
 
 pub mod grid;
+pub mod networking;
 
 const TILE_SIZE: f32 = 100.0;
 const BLACK_COLOR: graphics::Color = graphics::Color::BLACK;
@@ -24,6 +29,40 @@ const GRID_X: f32 = 100.0;
 const GRID_Y: f32 = 100.0;
 
 fn main() -> GameResult {
+    let status = match env::args()
+        .nth(1)
+        .expect("Usage: chess <client|server>")
+        .as_str()
+    {
+        "client" => MultiplayerStatus::Client,
+        "server" => MultiplayerStatus::Server,
+        _ => panic!("Usage: chess <client|server>"),
+    };
+
+    let con_data = match status {
+        MultiplayerStatus::Server => {
+            let port = env::args()
+                .nth(2)
+                .expect("Please supply port")
+                .parse::<u16>()
+                .expect("Invalid port number!");
+
+            println!("Waiting for client to connect...");
+            Connection::server(port)
+        }
+        MultiplayerStatus::Client => {
+            let addr = env::args().nth(2).expect("Please supply address and port");
+            let port = env::args()
+                .nth(3)
+                .expect("Please supply port")
+                .parse::<u16>()
+                .expect("Invalid port number!");
+
+            println!("Waiting for server to respond...");
+            Connection::client(&addr, port)
+        }
+    }?;
+
     // Make a Context.
     let (mut ctx, event_loop) = ContextBuilder::new("Chess", "Cool Game Author")
         .window_setup(
@@ -42,7 +81,7 @@ fn main() -> GameResult {
     // Create an instance of your event handler.
     // Usually, you should provide it with the Context object to
     // use when setting your game up.
-    let my_game = Chess::new(&mut ctx)?;
+    let my_game = Chess::new(&mut ctx, con_data)?;
 
     // Run!
     event::run(ctx, event_loop, my_game);
@@ -149,10 +188,23 @@ pub struct Chess {
     piece_images: PieceImages,
     selected_piece: Option<Selected>,
     drawables: Drawables,
+    connection: Connection,
 }
 
 impl Chess {
-    pub fn new(ctx: &mut Context) -> GameResult<Chess> {
+    pub fn new(ctx: &mut Context, mut connection: Connection) -> GameResult<Chess> {
+        if connection.multiplayer_status == MultiplayerStatus::Client {
+            connection.write(Start {
+                is_white: true,
+                name: Some("Skibidi ohio".to_string()),
+                fen: None,
+                time: None,
+                inc: None,
+            })?;
+        } else {
+            let packet: chess_networking::Start = connection.read()?;
+            println!("{:?}", packet);
+        }
         Ok(Chess {
             // ...
             game: Game::new(Some("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR".into())),
@@ -160,6 +212,7 @@ impl Chess {
             piece_images: PieceImages::new(ctx)?,
             selected_piece: None,
             drawables: Drawables::new(ctx)?,
+            connection,
         })
     }
 }
