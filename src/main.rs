@@ -39,7 +39,7 @@ fn main() -> GameResult {
         _ => panic!("Usage: chess <client|server>"),
     };
 
-    let con_data = match status {
+    let mut connection = match status {
         MultiplayerStatus::Server => {
             let port = env::args()
                 .nth(2)
@@ -63,6 +63,38 @@ fn main() -> GameResult {
         }
     }?;
 
+    if connection.multiplayer_status == MultiplayerStatus::Client {
+        // Client
+        connection.write(Start {
+            is_white: true,
+            name: Some("Skibidi ohio".to_string()),
+            fen: None,
+            time: None,
+            inc: None,
+        })?;
+        let packet: chess_networking::Start = connection.read_retry()?;
+        println!("{:?}", packet);
+        connection.local_color = match packet.is_white {
+            false => Color::BLACK,
+            true => Color::WHITE,
+        };
+    } else {
+        // Server
+        let packet: chess_networking::Start = connection.read_retry()?;
+        println!("{:?}", packet);
+        connection.write(Start {
+            is_white: !packet.is_white,
+            name: Some("Fortnite roblox".to_string()),
+            fen: None,
+            time: None,
+            inc: None,
+        })?;
+        connection.local_color = match packet.is_white {
+            false => Color::BLACK,
+            true => Color::WHITE,
+        };
+    }
+
     // Make a Context.
     let (mut ctx, event_loop) = ContextBuilder::new("Chess", "Cool Game Author")
         .window_setup(
@@ -81,7 +113,7 @@ fn main() -> GameResult {
     // Create an instance of your event handler.
     // Usually, you should provide it with the Context object to
     // use when setting your game up.
-    let my_game = Chess::new(&mut ctx, con_data)?;
+    let my_game = Chess::new(&mut ctx, connection)?;
 
     // Run!
     event::run(ctx, event_loop, my_game);
@@ -192,19 +224,7 @@ pub struct Chess {
 }
 
 impl Chess {
-    pub fn new(ctx: &mut Context, mut connection: Connection) -> GameResult<Chess> {
-        if connection.multiplayer_status == MultiplayerStatus::Client {
-            connection.write(Start {
-                is_white: true,
-                name: Some("Skibidi ohio".to_string()),
-                fen: None,
-                time: None,
-                inc: None,
-            })?;
-        } else {
-            let packet: chess_networking::Start = connection.read()?;
-            println!("{:?}", packet);
-        }
+    pub fn new(ctx: &mut Context, connection: Connection) -> GameResult<Chess> {
         Ok(Chess {
             // ...
             game: Game::new(Some("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR".into())),
@@ -349,6 +369,10 @@ impl EventHandler for Chess {
         y: f32,
     ) -> Result<(), ggez::GameError> {
         if button != MouseButton::Left {
+            return Ok(());
+        }
+        // Can only select or move piece when it is localplayer's turn
+        if self.game.turn != self.connection.local_color {
             return Ok(());
         }
         let position = match self.grid.screen2grid(x, y) {

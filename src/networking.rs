@@ -1,3 +1,4 @@
+use chess_lib::board::pieces::Color;
 use ggez::{GameError, GameResult};
 use rmp_serde::{Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
@@ -14,6 +15,7 @@ pub enum MultiplayerStatus {
 
 pub struct Connection {
     pub multiplayer_status: MultiplayerStatus,
+    pub local_color: Color,
     stream: TcpStream,
 }
 
@@ -76,6 +78,7 @@ impl Connection {
         Ok(Connection {
             multiplayer_status: MultiplayerStatus::Server,
             stream,
+            local_color: Color::EMPTY,
         })
     }
 
@@ -86,10 +89,11 @@ impl Connection {
         Ok(Connection {
             multiplayer_status: MultiplayerStatus::Client,
             stream,
+            local_color: Color::EMPTY,
         })
     }
 
-    pub fn write<T: Serialize>(&mut self, packet: T) -> Result<(), WriteError> {
+    pub fn write<T: Serialize>(&self, packet: T) -> Result<(), WriteError> {
         packet.serialize(&mut Serializer::new(&self.stream))?;
         Ok(())
     }
@@ -98,5 +102,18 @@ impl Connection {
         let mut de = Deserializer::new(&mut self.stream);
         let packet = T::deserialize(&mut de)?;
         Ok(packet)
+    }
+
+    pub fn read_retry<T: for<'a> Deserialize<'a>>(&mut self) -> Result<T, ReadError> {
+        loop {
+            let packet = self.read::<T>();
+            match packet {
+                Ok(p) => return Ok(p),
+                Err(e) => match e {
+                    ReadError::IO(_) => return Err(e),
+                    ReadError::Decode(_) => continue,
+                },
+            }
+        }
     }
 }
