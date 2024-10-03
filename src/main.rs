@@ -63,6 +63,8 @@ fn main() -> GameResult {
         }
     }?;
 
+    println!("Connected!");
+
     if connection.multiplayer_status == MultiplayerStatus::Client {
         // Client
         connection.write(Start {
@@ -73,15 +75,15 @@ fn main() -> GameResult {
             inc: None,
         })?;
         let packet: chess_networking::Start = connection.read_block()?;
-        println!("{:?}", packet);
+        //println!("{:?}", packet);
         connection.local_color = match packet.is_white {
-            false => Color::BLACK,
-            true => Color::WHITE,
+            false => Color::WHITE,
+            true => Color::BLACK,
         };
     } else {
         // Server
         let packet: chess_networking::Start = connection.read_block()?;
-        println!("{:?}", packet);
+        //println!("{:?}", packet);
         connection.write(Start {
             is_white: !packet.is_white,
             name: Some("Fortnite roblox".to_string()),
@@ -90,8 +92,8 @@ fn main() -> GameResult {
             inc: None,
         })?;
         connection.local_color = match packet.is_white {
-            false => Color::BLACK,
-            true => Color::WHITE,
+            false => Color::WHITE,
+            true => Color::BLACK,
         };
     }
     println!(
@@ -322,8 +324,8 @@ impl EventHandler for Chess {
             let selected = self.selected_piece.as_ref().unwrap();
             // Send move request, wait for Ack packet
             self.connection.write(chess_networking::Move {
-                from: (selected.position.x as u8, selected.position.y as u8),
-                to: (mov.0 as u8, mov.1 as u8),
+                from: (selected.position.x as u8, 7 - selected.position.y as u8), // Adjust y
+                to: (mov.0 as u8, 7 - mov.1 as u8),                               // Adjust y
                 promotion: None,
                 forfeit: false,
                 offer_draw: false,
@@ -352,9 +354,9 @@ impl EventHandler for Chess {
                 end_state: None,
             })?;
             move_piece(
-                Move(mov.to.0 as i32, mov.to.1 as i32),
+                Move(mov.to.0 as i32, 7 - mov.to.1 as i32), // Adjust y
                 mov.from.0 as i32,
-                mov.from.1 as i32,
+                7 - mov.from.1 as i32, // Adjust y
                 &mut self.game,
             )
             .unwrap();

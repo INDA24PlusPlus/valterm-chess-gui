@@ -95,18 +95,22 @@ impl Connection {
         })
     }
 
-    pub fn write<T: Serialize>(&self, packet: T) -> Result<(), WriteError> {
+    pub fn write<T: Serialize + std::fmt::Debug>(&self, packet: T) -> Result<(), WriteError> {
+        println!("Sending: {:?}", packet);
         packet.serialize(&mut Serializer::new(&self.stream))?;
         Ok(())
     }
 
-    pub fn read<T: for<'a> Deserialize<'a>>(&mut self) -> Result<T, ReadError> {
+    pub fn read<T: for<'a> Deserialize<'a> + std::fmt::Debug>(&mut self) -> Result<T, ReadError> {
         let mut de = Deserializer::new(&mut self.stream);
         let packet = T::deserialize(&mut de)?;
+        println!("Receiving: {:?}", packet);
         Ok(packet)
     }
 
-    pub fn read_block<T: for<'a> Deserialize<'a>>(&mut self) -> Result<T, ReadError> {
+    pub fn read_block<T: for<'a> Deserialize<'a> + std::fmt::Debug>(
+        &mut self,
+    ) -> Result<T, ReadError> {
         loop {
             let packet = self.read::<T>();
             if let Ok(p) = packet {
