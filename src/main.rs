@@ -72,7 +72,7 @@ fn main() -> GameResult {
             time: None,
             inc: None,
         })?;
-        let packet: chess_networking::Start = connection.read_retry()?;
+        let packet: chess_networking::Start = connection.read_block()?;
         println!("{:?}", packet);
         connection.local_color = match packet.is_white {
             false => Color::BLACK,
@@ -80,7 +80,7 @@ fn main() -> GameResult {
         };
     } else {
         // Server
-        let packet: chess_networking::Start = connection.read_retry()?;
+        let packet: chess_networking::Start = connection.read_block()?;
         println!("{:?}", packet);
         connection.write(Start {
             is_white: !packet.is_white,
@@ -94,6 +94,10 @@ fn main() -> GameResult {
             true => Color::WHITE,
         };
     }
+    println!(
+        "I am {:?} and {:?}",
+        connection.multiplayer_status, connection.local_color
+    );
 
     // Make a Context.
     let (mut ctx, event_loop) = ContextBuilder::new("Chess", "Cool Game Author")
@@ -221,6 +225,7 @@ pub struct Chess {
     selected_piece: Option<Selected>,
     drawables: Drawables,
     connection: Connection,
+    requested_move: Option<Move>,
 }
 
 impl Chess {
@@ -233,6 +238,7 @@ impl Chess {
             selected_piece: None,
             drawables: Drawables::new(ctx)?,
             connection,
+            requested_move: None,
         })
     }
 }
@@ -312,6 +318,47 @@ pub fn draw_piece(
 impl EventHandler for Chess {
     fn update(&mut self, _ctx: &mut Context) -> GameResult {
         // Update code here...
+        if let Some(mov) = self.requested_move {
+            let selected = self.selected_piece.as_ref().unwrap();
+            // Send move request, wait for Ack packet
+            self.connection.write(chess_networking::Move {
+                from: (selected.position.x as u8, selected.position.y as u8),
+                to: (mov.0 as u8, mov.1 as u8),
+                promotion: None,
+                forfeit: false,
+                offer_draw: false,
+            })?;
+            let ack: chess_networking::Ack = self.connection.read_block()?;
+            if ack.ok {
+                move_piece(
+                    mov,
+                    selected.position.x as i32,
+                    selected.position.y as i32,
+                    &mut self.game,
+                )
+                .unwrap();
+            }
+            self.selected_piece = None;
+            self.requested_move = None;
+        }
+
+        let mov = self.connection.read::<chess_networking::Move>();
+        if let Ok(mov) = mov {
+            // Received move request, verify move and then send ack and create move locally
+            // Verify here
+
+            self.connection.write(chess_networking::Ack {
+                ok: true,
+                end_state: None,
+            })?;
+            move_piece(
+                Move(mov.to.0 as i32, mov.to.1 as i32),
+                mov.from.0 as i32,
+                mov.from.1 as i32,
+                &mut self.game,
+            )
+            .unwrap();
+        }
         Ok(())
     }
 
@@ -386,14 +433,16 @@ impl EventHandler for Chess {
                 .moves
                 .contains(&Move(position.x as i32, position.y as i32))
             {
-                move_piece(
+                /* move_piece(
                     Move(position.x as i32, position.y as i32),
                     selected.position.x as i32,
                     selected.position.y as i32,
                     &mut self.game,
                 )
                 .unwrap();
-                self.selected_piece = None;
+                self.selected_piece = None; */
+                self.requested_move = Some(Move(position.x as i32, position.y as i32));
+                return Ok(());
             }
         }
 

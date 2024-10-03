@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::{
     net::{TcpListener, TcpStream},
     sync::Arc,
+    thread,
+    time::Duration,
 };
 
 #[derive(Debug, PartialEq)]
@@ -73,7 +75,7 @@ impl Connection {
     pub fn server(port: u16) -> std::io::Result<Connection> {
         let listener = TcpListener::bind(("127.0.0.1", port))?;
         let (stream, _addr) = listener.accept()?;
-        //stream.set_nonblocking(true)?;
+        stream.set_nonblocking(true)?;
 
         Ok(Connection {
             multiplayer_status: MultiplayerStatus::Server,
@@ -84,7 +86,7 @@ impl Connection {
 
     pub fn client(addr: &str, port: u16) -> std::io::Result<Connection> {
         let stream = TcpStream::connect((addr, port))?;
-        //stream.set_nonblocking(true)?;
+        stream.set_nonblocking(true)?;
 
         Ok(Connection {
             multiplayer_status: MultiplayerStatus::Client,
@@ -104,16 +106,13 @@ impl Connection {
         Ok(packet)
     }
 
-    pub fn read_retry<T: for<'a> Deserialize<'a>>(&mut self) -> Result<T, ReadError> {
+    pub fn read_block<T: for<'a> Deserialize<'a>>(&mut self) -> Result<T, ReadError> {
         loop {
             let packet = self.read::<T>();
-            match packet {
-                Ok(p) => return Ok(p),
-                Err(e) => match e {
-                    ReadError::IO(_) => return Err(e),
-                    ReadError::Decode(_) => continue,
-                },
-            }
+            if let Ok(p) = packet {
+                return Ok(p);
+            };
+            thread::sleep(Duration::from_millis(20));
         }
     }
 }
