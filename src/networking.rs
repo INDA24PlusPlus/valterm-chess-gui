@@ -3,6 +3,7 @@ use ggez::{GameError, GameResult};
 use rmp_serde::{Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
 use std::{
+    io::{BufWriter, Write},
     net::{TcpListener, TcpStream},
     sync::Arc,
     thread,
@@ -18,7 +19,7 @@ pub enum MultiplayerStatus {
 pub struct Connection {
     pub multiplayer_status: MultiplayerStatus,
     pub local_color: Color,
-    stream: TcpStream,
+    stream: BufWriter<TcpStream>,
 }
 
 #[derive(Debug)]
@@ -73,13 +74,13 @@ impl From<WriteError> for GameError {
 
 impl Connection {
     pub fn server(port: u16) -> std::io::Result<Connection> {
-        let listener = TcpListener::bind(("127.0.0.1", port))?;
+        let listener = TcpListener::bind(("0.0.0.0", port))?;
         let (stream, _addr) = listener.accept()?;
         stream.set_nonblocking(true)?;
 
         Ok(Connection {
             multiplayer_status: MultiplayerStatus::Server,
-            stream,
+            stream: BufWriter::new(stream),
             local_color: Color::EMPTY,
         })
     }
@@ -90,19 +91,20 @@ impl Connection {
 
         Ok(Connection {
             multiplayer_status: MultiplayerStatus::Client,
-            stream,
+            stream: BufWriter::new(stream),
             local_color: Color::EMPTY,
         })
     }
 
-    pub fn write<T: Serialize + std::fmt::Debug>(&self, packet: T) -> Result<(), WriteError> {
+    pub fn write<T: Serialize + std::fmt::Debug>(&mut self, packet: T) -> Result<(), WriteError> {
         println!("Sending: {:?}", packet);
-        packet.serialize(&mut Serializer::new(&self.stream))?;
+        packet.serialize(&mut Serializer::new(&mut self.stream))?;
+        self.stream.flush()?;
         Ok(())
     }
 
     pub fn read<T: for<'a> Deserialize<'a> + std::fmt::Debug>(&mut self) -> Result<T, ReadError> {
-        let mut de = Deserializer::new(&mut self.stream);
+        let mut de = Deserializer::new(self.stream.get_mut());
         let packet = T::deserialize(&mut de)?;
         println!("Receiving: {:?}", packet);
         Ok(packet)
